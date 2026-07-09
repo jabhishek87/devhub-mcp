@@ -43,3 +43,21 @@ lint: build ## Lint Python files in container
 clean: ## Remove image and containers
 	$(COMPOSE) down --rmi local 2>/dev/null || true
 	docker rmi $(IMAGE):$(TAG) 2>/dev/null || true
+
+k8s-deploy: build ## Deploy to local k8s (minikube/k3s)
+	bash k8s/deploy.sh
+
+k8s-test: ## Run test job in k8s
+	kubectl apply -f k8s/test-job.yaml
+	kubectl -n devhub wait --for=condition=complete job/devhub-test --timeout=60s
+	kubectl -n devhub logs job/devhub-test
+	kubectl -n devhub delete job/devhub-test
+
+k8s-status: ## Show k8s deployment status
+	kubectl -n devhub get pods,deploy,job
+
+k8s-logs: ## Tail gateway logs
+	kubectl -n devhub logs -l app=devhub-gateway -f
+
+k8s-delete: ## Remove all k8s resources
+	kubectl delete namespace devhub --ignore-not-found

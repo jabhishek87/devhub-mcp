@@ -38,3 +38,46 @@ jobs:
 
       - name: Verify docker compose config
         run: docker compose -f docker-compose.yml config
+
+  k8s:
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t devhub-mcp:latest .
+
+      - name: Create k3s cluster
+        uses: AbsaOSS/k3d-action@v2
+        with:
+          cluster-name: test
+          args: --no-lb
+
+      - name: Load image into cluster
+        run: k3d image import devhub-mcp:latest -c test
+
+      - name: Deploy to k8s
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml
+          kubectl apply -f k8s/deployment.yaml
+
+      - name: Wait for deployment
+        run: kubectl -n devhub rollout status deployment/devhub-gateway --timeout=90s
+
+      - name: Run test job
+        run: |
+          kubectl apply -f k8s/test-job.yaml
+          kubectl -n devhub wait --for=condition=complete job/devhub-test --timeout=60s
+
+      - name: Show test logs
+        if: always()
+        run: kubectl -n devhub logs job/devhub-test
+
+      - name: Verify pod running
+        run: |
+          kubectl -n devhub get pods -l app=devhub-gateway
+          POD=$(kubectl -n devhub get pods -l app=devhub-gateway -o jsonpath='{.items[0].metadata.name}')
+          kubectl -n devhub exec $POD -- python -c "import asyncio,json;from main import hub_mcp;r=asyncio.run(hub_mcp.call_tool('healthz',{}));print(json.loads(r.content[0].text))"

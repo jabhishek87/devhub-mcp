@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: devhub-test
+  namespace: devhub
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      containers:
+        - name: test
+          image: devhub-mcp:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "tests/test_tools.py"]
+          envFrom:
+            - configMapRef:
+                name: devhub-config
+      restartPolicy: Never

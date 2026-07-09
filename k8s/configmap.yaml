@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devhub-config
+  namespace: devhub
+data:
+  CONFLUENCE_MCP_URL: "https://confluence.wndrvr.cloud/mcp"
+  JIRA_MCP_URL: "https://jira.wndrvr.cloud/mcp"
+  EXCALIDRAW_MCP_URL: "https://mcp.excalidraw.com"
