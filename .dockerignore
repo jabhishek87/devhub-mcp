@@ -1,0 +1,5 @@
+myenv/
+__pycache__/
+mcp_servers/__pycache__/
+*.pyc
+.env

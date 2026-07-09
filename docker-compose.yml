@@ -1,0 +1,9 @@
+services:
+  mcp-server:
+    build: .
+    image: mcp-server:latest
+    stdin_open: true
+    tty: false
+    environment:
+      - GERRIT_USER=${GERRIT_USER:-}
+      - GERRIT_HTTP_PASSWORD=${GERRIT_HTTP_PASSWORD:-}
