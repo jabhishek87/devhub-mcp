@@ -1,115 +1,108 @@
-# devhub-mcp
+# DevHub MCP Server
 
-MCP (Model Context Protocol) server for OpenDev Gitea and Gerrit APIs. Exposes repository browsing, code review, and change management as tools for LLM agents.
-
-## Tools
-
-### Gitea (read-only)
-| Tool | Description |
-|------|-------------|
-| `search_repos` | Search OpenDev repositories |
-| `get_repo` | Get repository details |
-| `list_repo_branches` | List branches |
-| `get_file_contents` | Get file from repo |
-| `list_repo_commits` | List commits |
-| `list_orgs` | List organizations |
-| `list_org_repos` | List org repositories |
-
-### Gerrit (read)
-| Tool | Description |
-|------|-------------|
-| `gerrit_search_changes` | Search changes by query |
-| `gerrit_get_change` | Get change details |
-| `gerrit_list_change_files` | List modified files |
-| `gerrit_get_file_diff` | Get file diff |
-| `gerrit_list_projects` | List projects |
-| `gerrit_get_project` | Get project details |
-
-### Gerrit (write — requires auth)
-| Tool | Description |
-|------|-------------|
-| `gerrit_review` | Post review with labels |
-| `gerrit_add_reviewer` | Add reviewer |
-| `gerrit_remove_reviewer` | Remove reviewer |
-| `gerrit_abandon_change` | Abandon change |
-| `gerrit_restore_change` | Restore abandoned change |
-| `gerrit_submit_change` | Submit (merge) change |
-| `gerrit_set_topic` | Set topic |
-| `gerrit_set_hashtags` | Add/remove hashtags |
+Unified MCP gateway. All developer tools exposed as a single MCP stdio endpoint via Docker.
 
 ## Architecture
 
 ```
-main.py                    — Master hub (single MCP process)
+main.py                    — Master gateway (single MCP stdio process)
 mcp_servers/
-  middleware.py            — Aggregates sub-server tools into hub
-  gerrit.py                — OpenDev/Gerrit sub-server (runs standalone too)
+  middleware.py            — Aggregates local sub-server tools into hub
+  proxy.py                 — Proxies remote MCP servers into hub
+  gerrit.py                — OpenDev/Gerrit (direct API, runs standalone too)
+  jenkins.py               — Jenkins CI (direct API, runs standalone too)
 ```
 
-Adding a new sub-server:
-```python
-# mcp_servers/jira.py — define tools with @mcp.tool()
-# main.py:
-from mcp_servers.jira import mcp as jira_mcp
-load_subserver(hub_mcp, jira_mcp, namespace="jira")
-```
+### Tool Sources
 
-## Setup
+| Source | Tools | Method |
+|--------|-------|--------|
+| Gerrit/Gitea | 21 | Direct API calls |
+| Jenkins | 17 | Direct API calls |
+| Confluence | 11 | Proxied from remote MCP server |
+| Jira | 19 | Proxied from remote MCP server |
+| Excalidraw | 5 | Proxied from remote MCP server |
+| healthz | 1 | Built-in |
+| **Total** | **74** | |
 
-### Local
+## Secrets
+
+All secrets stored in `~/.secrets` and sourced into shell:
 
 ```bash
-python3.12 -m venv myenv
-source myenv/bin/activate
-pip install -r requirements.txt
-python main.py
+# ~/.secrets
+export GERRIT_USER="your-user"
+export GERRIT_HTTP_PASSWORD="your-pass"
+export JENKINS_URL="http://jenkins.example.com/"
+export JENKINS_USER="your-user"
+export JENKINS_API_TOKEN="your-token"
 ```
 
-### Docker
+Source before use: `source ~/.secrets`
+
+No secrets needed for Confluence, Jira, or Excalidraw — they're proxied from public MCP endpoints that handle their own auth.
+
+## Quick Start
 
 ```bash
-docker build -t mcp-server .
-docker run --rm -e GERRIT_USER=myuser -e GERRIT_HTTP_PASSWORD=mypass mcp-server
+source ~/.secrets
+make build
+make test-docker
 ```
 
-### Docker Compose
+## Makefile
 
 ```bash
-docker compose up
+make build       # Build Docker image
+make run         # Run gateway (stdio)
+make up          # docker compose up -d
+make down        # docker compose down
+make test        # Tests locally
+make test-docker # Tests in container
+make healthz     # Health check
+make lint        # Lint all files
+make clean       # Remove image
+make help        # Show targets
 ```
 
-## Environment Variables
+## MCP Client Config
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GERRIT_USER` | For write ops | Gerrit HTTP username |
-| `GERRIT_HTTP_PASSWORD` | For write ops | Gerrit HTTP password |
-
-## MCP Client Configuration
-
-### Kiro CLI (`~/.kiro/settings/mcp.json`)
+### Kiro (`~/.kiro/settings/mcp.json`)
 
 ```json
 {
   "mcpServers": {
-    "opendev": {
+    "gateway": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "-e", "GERRIT_USER", "-e", "GERRIT_HTTP_PASSWORD", "mcp-server"],
+      "args": ["compose", "-f", "/path/to/docker-compose.yml", "run", "--rm", "-i", "gateway"],
       "env": {
-        "GERRIT_USER": "your-user",
-        "GERRIT_HTTP_PASSWORD": "your-pass"
-      }
+        "GERRIT_USER": "${GERRIT_USER}",
+        "GERRIT_HTTP_PASSWORD": "${GERRIT_HTTP_PASSWORD}",
+        "JENKINS_URL": "${JENKINS_URL}",
+        "JENKINS_USER": "${JENKINS_USER}",
+        "JENKINS_API_TOKEN": "${JENKINS_API_TOKEN}"
+      },
+      "type": "stdio",
+      "timeout": 120000
     }
   }
 }
 ```
 
-### Standalone (gerrit.py only)
+## Adding a New Sub-Server
 
+**Local (direct API):**
+1. Create `mcp_servers/myservice.py` with `mcp = FastMCP("myservice")` and `@mcp.tool()` functions
+2. In `main.py`: `load_subserver(hub_mcp, myservice_mcp, namespace="myservice")`
+
+**Remote (proxy from existing MCP server):**
+1. In `main.py`, add URL to `REMOTE_SERVERS` dict
+2. That's it — tools are discovered and proxied automatically
+
+## Standalone Mode
+
+Each local sub-server runs independently:
 ```bash
-cd mcp_servers && python gerrit.py
+python mcp_servers/gerrit.py
+python mcp_servers/jenkins.py
 ```
-
-## Transport
-
-Default: `stdio` (for agent integration). The server reads JSON-RPC from stdin and writes to stdout.

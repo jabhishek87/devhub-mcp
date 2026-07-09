@@ -19,45 +19,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Verify tools register
-        run: |
-          python -c "
-          from main import hub_mcp
-          import asyncio
-
-          async def check():
-              tools = await hub_mcp.list_tools()
-              assert len(tools) == 21, f'Expected 21 tools, got {len(tools)}'
-              names = [t.name for t in tools]
-              # Verify key tools present
-              assert 'gerrit_get_change' in names
-              assert 'gerrit_review' in names
-              assert 'search_repos' in names
-              print(f'OK: {len(tools)} tools registered')
-              for t in tools:
-                  print(f'  {t.name}')
-
-          asyncio.run(check())
-          "
+      - name: Run tests
+        run: python tests/test_tools.py
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t mcp-server:test .
+      - name: Build and test
+        run: make test-docker
 
-      - name: Verify tools in container
-        run: |
-          docker run --rm mcp-server:test python -c "
-          from main import hub_mcp
-          import asyncio
+      - name: Verify healthz
+        run: make healthz
 
-          async def check():
-              tools = await hub_mcp.list_tools()
-              assert len(tools) == 21, f'Expected 21 tools, got {len(tools)}'
-              print(f'OK: {len(tools)} tools registered')
+      - name: Lint
+        run: make lint
 
-          asyncio.run(check())
-          "
+      - name: Verify docker compose config
+        run: docker compose -f docker-compose.yml config

@@ -1,9 +1,17 @@
 services:
-  mcp-server:
+  gateway:
     build: .
-    image: mcp-server:latest
+    image: devhub-mcp:latest
     stdin_open: true
-    tty: false
     environment:
+      # Gerrit/OpenDev
       - GERRIT_USER=${GERRIT_USER:-}
       - GERRIT_HTTP_PASSWORD=${GERRIT_HTTP_PASSWORD:-}
+      # Jenkins
+      - JENKINS_URL=${JENKINS_URL:-}
+      - JENKINS_USER=${JENKINS_USER:-}
+      - JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-}
+      # Remote MCP URLs (override defaults if needed)
+      - CONFLUENCE_MCP_URL=${CONFLUENCE_MCP_URL:-https://confluence.wndrvr.cloud/mcp}
+      - JIRA_MCP_URL=${JIRA_MCP_URL:-https://jira.wndrvr.cloud/mcp}
+      - EXCALIDRAW_MCP_URL=${EXCALIDRAW_MCP_URL:-https://mcp.excalidraw.com}
