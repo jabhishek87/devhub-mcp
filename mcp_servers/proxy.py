@@ -7,7 +7,7 @@ from fastmcp import FastMCP
 from fastmcp.client import Client
 
 
-def load_remote_server(hub: FastMCP, url: str, namespace: str = "", timeout: int = 15):
+def load_remote_server(hub: FastMCP, url: str, namespace: str = "", timeout: int = 15, token: str | None = None):
     """Connect to a remote MCP server, discover tools, register proxies on hub.
 
     Args:
@@ -15,10 +15,11 @@ def load_remote_server(hub: FastMCP, url: str, namespace: str = "", timeout: int
         url: Remote MCP server URL (SSE/streamable endpoint).
         namespace: Prefix for tool names.
         timeout: Connection timeout in seconds.
+        token: Bearer token for authenticated remote servers (passed as auth=str to Client).
     """
 
     async def discover():
-        async with Client(url) as c:
+        async with Client(url, auth=token) as c:
             return await c.list_tools()
 
     tools = asyncio.run(discover())
@@ -29,14 +30,13 @@ def load_remote_server(hub: FastMCP, url: str, namespace: str = "", timeout: int
         tool_desc = tool.description or ""
         remote_tool_name = tool.name
         remote_url = url
+        remote_token = token
 
-        # Create proxy that accepts a single JSON arguments dict
-        # This avoids the **kwargs issue with FastMCP tool registration
-        def make_proxy(r_url, r_tool_name, desc):
+        def make_proxy(r_url, r_tool_name, desc, r_token):
             async def proxy(arguments: str = "{}") -> str:
                 """Proxy call to remote MCP server. Pass arguments as JSON string."""
                 args = json.loads(arguments) if arguments else {}
-                async with Client(r_url) as c:
+                async with Client(r_url, auth=r_token) as c:
                     result = await c.call_tool(r_tool_name, args)
                     if hasattr(result, 'content') and result.content:
                         texts = [ct.text for ct in result.content if hasattr(ct, 'text')]
@@ -45,7 +45,7 @@ def load_remote_server(hub: FastMCP, url: str, namespace: str = "", timeout: int
             proxy.__doc__ = desc
             return proxy
 
-        fn = make_proxy(remote_url, remote_tool_name, tool_desc)
+        fn = make_proxy(remote_url, remote_tool_name, tool_desc, remote_token)
         hub.tool(name=tool_name)(fn)
 
     return len(tools)

@@ -6,7 +6,7 @@ metadata:
   labels:
     app: devhub-gateway
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: devhub-gateway
@@ -19,9 +19,11 @@ spec:
         - name: gateway
           image: devhub-mcp:latest
           imagePullPolicy: IfNotPresent
-          command: ["python", "main.py"]
+          command: ["python", "main.py", "http"]
           stdin: true
           tty: false
+          ports:
+            - containerPort: 8080
           envFrom:
             - secretRef:
                 name: devhub-secrets
@@ -35,18 +37,12 @@ spec:
               memory: "256Mi"
               cpu: "500m"
           livenessProbe:
-            exec:
-              command:
-                - python
-                - -c
-                - "import asyncio,json;from main import hub_mcp;r=asyncio.run(hub_mcp.call_tool('healthz',{}));assert json.loads(r.content[0].text)['status']=='ok'"
-            initialDelaySeconds: 10
-            periodSeconds: 30
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 60
           readinessProbe:
-            exec:
-              command:
-                - python
-                - -c
-                - "import asyncio;from main import hub_mcp;asyncio.run(hub_mcp.list_tools())"
-            initialDelaySeconds: 5
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
             periodSeconds: 10
